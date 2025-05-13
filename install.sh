@@ -76,7 +76,9 @@ status() {
         
         # Try to connect to the server to verify it's responsive
         if curl -s "http://localhost:9090/gpus" > /dev/null; then
-            echo "Server is responsive"
+            echo "Server is responsive on port 9090"
+        elif curl -s "http://localhost:8000/gpus" > /dev/null; then
+            echo "Server is responsive on port 8000"
         else
             echo "Warning: Server is running but not responding to API requests"
         fi
@@ -123,12 +125,20 @@ CONFIG_DIR="$HOME/.config/gpuscheduler"
 
 # Check if server is running
 check_server() {
-    if ! curl -s "http://localhost:9090/gpus" > /dev/null; then
+    # Try port 9090 first, then fall back to 8000 if needed
+    if curl -s "http://localhost:9090/gpus" > /dev/null; then
+        # Server is running on port 9090
+        export GPU_SCHEDULER_PORT=9090
+        return 0
+    elif curl -s "http://localhost:8000/gpus" > /dev/null; then
+        # Server is running on port 8000
+        export GPU_SCHEDULER_PORT=8000
+        return 0
+    else
         echo "Error: GPU scheduler is not running or not accessible"
         echo "Start it with: gpuschedulerd start"
         return 1
     fi
-    return 0
 }
 
 # Show help for all commands
@@ -194,17 +204,10 @@ cmd="$1"
 shift || true
 
 case "$cmd" in
-    submit|list|status|cancel|gpus)
+    submit|list|status|cancel|gpus|log)
         check_server || exit 1
-        python3 "$CONFIG_DIR/gpu-scheduler-client.py" "$cmd" "$@"
-        ;;
-    log)
-        if [ -z "$1" ]; then
-            echo "Error: Missing job ID"
-            echo "Usage: gpujob log <job_id>"
-            exit 1
-        fi
-        view_log "$1"
+        # Execute the command using the client with the detected port
+        python3 "$CONFIG_DIR/gpu-scheduler-client.py" --server "http://localhost:$GPU_SCHEDULER_PORT" "$cmd" "$@"
         ;;
     help|--help|-h)
         show_help
@@ -225,7 +228,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=$PYTHON_EXEC $CONFIG_DIR/gpu-scheduler.py --port 9090
+ExecStart=$PYTHON_EXEC $CONFIG_DIR/gpu-scheduler.py --port 9090 --poll-interval 10
 Restart=on-failure
 RestartSec=5s
 

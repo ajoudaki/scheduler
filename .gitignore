@@ -1,1 +1,30 @@
 **/.claude/settings.local.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Job outputs
+output/
+
+# Virtual environments
+venv/
+env/
+
+# Logs
+*.log
+
+# System files
+.DS_Store
+*.swp
+*~
+
+# Config files that may contain sensitive information
+config.ini
+.env

@@ -1,146 +1,195 @@
 #!/usr/bin/env python3
 """
-Client script for submitting jobs to the GPU scheduler
+Simple client for the GPU scheduler with robust error handling
 """
 
 import argparse
-import json
+import requests
 import sys
 import os
-import requests
+from datetime import datetime
 
-def submit_job(server_url, command, num_gpus=1, gpu_ids=None, memory_limit=5, 
-               env=None, working_dir=None, name=None, priority=0):
-    """Submit a job to the scheduler."""
+def make_api_request(method, url, json_data=None):
+    """Make an API request with error handling"""
+    try:
+        if method.lower() == 'get':
+            response = requests.get(url)
+        elif method.lower() == 'post':
+            response = requests.post(url, json=json_data)
+        else:
+            print(f"Unsupported method: {method}")
+            return None
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Error: API returned {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"Error connecting to server: {e}")
+        return None
+
+def submit_job(args):
+    """Submit a job to the scheduler"""
+    # Parse environment variables
+    env = {}
+    if args.env:
+        for env_var in args.env:
+            key, value = env_var.split('=', 1)
+            env[key] = value
     
     # Prepare job config
     job_config = {
-        "command": command,
-        "num_gpus": num_gpus,
-        "memory_limit": memory_limit,
-        "priority": priority
+        "command": args.command,
+        "num_gpus": args.gpus,
+        "memory_limit": args.memory,
+        "priority": args.priority
     }
     
-    if gpu_ids:
-        job_config["gpu_ids"] = gpu_ids
+    if args.gpu_ids:
+        job_config["gpu_ids"] = args.gpu_ids
     if env:
         job_config["env"] = env
-    if working_dir:
-        job_config["working_dir"] = working_dir
-    if name:
-        job_config["name"] = name
+    if args.working_dir:
+        job_config["working_dir"] = args.working_dir
+    if args.name:
+        job_config["name"] = args.name
+    
+    print(f"Submitting job with command: {args.command}")
+    print(f"Options: {args.gpus} GPUs, Memory: {args.memory}GB, Priority: {args.priority}")
     
     # Send request
-    response = requests.post(f"{server_url}/jobs", json=job_config)
-    
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Error submitting job: {response.text}", file=sys.stderr)
-        return None
-
-def list_jobs(server_url):
-    """List all jobs in the scheduler."""
-    response = requests.get(f"{server_url}/jobs")
-    
-    if response.status_code == 200:
-        jobs = response.json()["jobs"]
-        
-        # Print header
-        print(f"{'JOB ID':<10} {'NAME':<20} {'STATUS':<10} {'GPUs':<10} {'SUBMITTED':<20}")
-        print("-" * 70)
-        
-        # Print jobs
-        for job_id, job in jobs.items():
-            gpus_str = ','.join(map(str, job['assigned_gpus'] or [])) if job['assigned_gpus'] else '-'
-            submit_time = job['submit_time']
-            # Convert timestamp to readable format if needed
-            from datetime import datetime
-            submit_time_str = datetime.fromtimestamp(submit_time).strftime('%Y-%m-%d %H:%M:%S') if submit_time else '-'
-            
-            print(f"{job_id:<10} {job['name'][:20]:<20} {job['status']:<10} {gpus_str:<10} {submit_time_str:<20}")
-        
-        return jobs
-    else:
-        print(f"Error listing jobs: {response.text}", file=sys.stderr)
-        return None
-
-def get_job_status(server_url, job_id):
-    """Get detailed status for a specific job."""
-    response = requests.get(f"{server_url}/jobs/{job_id}")
-    
-    if response.status_code == 200:
-        job = response.json()["job"]
-        
-        # Print job details
-        print(f"Job ID: {job_id}")
-        print(f"Name: {job['name']}")
-        print(f"Status: {job['status']}")
-        print(f"Command: {job['command']}")
-        print(f"GPUs: {', '.join(map(str, job['assigned_gpus'] or []))}" if job['assigned_gpus'] else "GPUs: (not assigned)")
-        print(f"Memory Limit: {job['memory_limit']} GB")
-        
-        if job['submit_time']:
-            from datetime import datetime
-            submit_time = datetime.fromtimestamp(job['submit_time']).strftime('%Y-%m-%d %H:%M:%S')
-            print(f"Submit Time: {submit_time}")
-        
-        if job['start_time']:
-            from datetime import datetime
-            start_time = datetime.fromtimestamp(job['start_time']).strftime('%Y-%m-%d %H:%M:%S')
-            print(f"Start Time: {start_time}")
-            
-        if job['end_time']:
-            from datetime import datetime
-            end_time = datetime.fromtimestamp(job['end_time']).strftime('%Y-%m-%d %H:%M:%S')
-            print(f"End Time: {end_time}")
-            
-        if job['exit_code'] is not None:
-            print(f"Exit Code: {job['exit_code']}")
-            
-        if 'recent_output' in job and job['recent_output']:
-            print("\nRecent Output:")
-            print("-" * 40)
-            print(job['recent_output'])
-            
-        return job
-    else:
-        print(f"Error getting job status: {response.text}", file=sys.stderr)
-        return None
-
-def cancel_job(server_url, job_id):
-    """Cancel a job."""
-    response = requests.post(f"{server_url}/jobs/{job_id}/cancel")
-    
-    if response.status_code == 200:
-        print(f"Job {job_id} cancelled successfully.")
+    result = make_api_request('post', f"{args.server}/jobs", job_config)
+    if result:
+        print(f"Job submitted with ID: {result['job_id']}")
         return True
-    else:
-        print(f"Error cancelling job: {response.text}", file=sys.stderr)
-        return False
+    return False
 
-def get_gpu_status(server_url):
-    """Get GPU status."""
-    response = requests.get(f"{server_url}/gpus")
+def list_jobs(args):
+    """List all jobs"""
+    result = make_api_request('get', f"{args.server}/jobs")
+    if not result:
+        return False
     
-    if response.status_code == 200:
-        gpus = response.json()["gpus"]
+    jobs = result.get("jobs", {})
+    if not jobs:
+        print("No jobs found.")
+        return True
+    
+    # Print header
+    print(f"{'JOB ID':<10} {'NAME':<20} {'STATUS':<10} {'GPUs':<10} {'SUBMITTED':<20}")
+    print("-" * 70)
+    
+    # Print jobs
+    for job_id, job in jobs.items():
+        gpus_str = ','.join(map(str, job['assigned_gpus'] or [])) if job['assigned_gpus'] else '-'
+        submit_time = job['submit_time']
+        submit_time_str = datetime.fromtimestamp(submit_time).strftime('%Y-%m-%d %H:%M:%S') if submit_time else '-'
         
-        # Print header
-        print(f"{'GPU ID':<8} {'NAME':<20} {'MEMORY':<18} {'UTIL %':<8} {'TEMP':<6} {'JOB':<10}")
-        print("-" * 76)
+        print(f"{job_id:<10} {job['name'][:20]:<20} {job['status']:<10} {gpus_str:<10} {submit_time_str:<20}")
+    
+    return True
+
+def get_job_status(args):
+    """Get detailed job status"""
+    result = make_api_request('get', f"{args.server}/jobs/{args.job_id}")
+    if not result:
+        return False
+    
+    job = result.get("job")
+    if not job:
+        print(f"Job {args.job_id} not found.")
+        return False
+    
+    # Print job details
+    print(f"Job ID: {args.job_id}")
+    print(f"Name: {job['name']}")
+    print(f"Status: {job['status']}")
+    print(f"Command: {job['command']}")
+    print(f"GPUs: {', '.join(map(str, job['assigned_gpus'] or []))}" if job['assigned_gpus'] else "GPUs: (not assigned)")
+    print(f"Memory Limit: {job['memory_limit']} GB")
+    
+    if job['submit_time']:
+        submit_time = datetime.fromtimestamp(job['submit_time']).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"Submit Time: {submit_time}")
+    
+    if job['start_time']:
+        start_time = datetime.fromtimestamp(job['start_time']).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"Start Time: {start_time}")
         
-        # Print GPUs
-        for gpu in gpus:
-            memory_str = f"{gpu['used_memory']} / {gpu['total_memory']} MB"
-            job_str = gpu['assigned_job_id'] or "Free" if gpu['is_available'] else "Busy"
-            
-            print(f"{gpu['id']:<8} {gpu['name'][:20]:<20} {memory_str:<18} {gpu['utilization']:<8} {gpu['temperature']:<6} {job_str:<10}")
+    if job['end_time']:
+        end_time = datetime.fromtimestamp(job['end_time']).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"End Time: {end_time}")
         
-        return gpus
+    if job['exit_code'] is not None:
+        print(f"Exit Code: {job['exit_code']}")
+        
+    if 'recent_output' in job and job['recent_output']:
+        print("\nRecent Output:")
+        print("-" * 40)
+        print(job['recent_output'])
+    
+    return True
+
+def cancel_job(args):
+    """Cancel a specific job"""
+    result = make_api_request('post', f"{args.server}/jobs/{args.job_id}/cancel")
+    if result:
+        print(f"Job {args.job_id} cancelled successfully.")
+        return True
+    return False
+
+def get_gpu_status(args):
+    """Get GPU status"""
+    result = make_api_request('get', f"{args.server}/gpus")
+    if not result:
+        return False
+    
+    gpus = result.get("gpus", [])
+    if not gpus:
+        print("No GPUs found.")
+        return True
+    
+    # Print header
+    print(f"{'GPU ID':<8} {'NAME':<20} {'MEMORY':<18} {'UTIL %':<8} {'TEMP':<6} {'JOB':<10}")
+    print("-" * 76)
+    
+    # Print GPUs
+    for gpu in gpus:
+        memory_str = f"{gpu['used_memory']} / {gpu['total_memory']} MB"
+        job_str = gpu['assigned_job_id'] or "Free" if gpu['is_available'] else "Busy"
+        
+        print(f"{gpu['id']:<8} {gpu['name'][:20]:<20} {memory_str:<18} {gpu['utilization']:<8} {gpu['temperature']:<6} {job_str:<10}")
+    
+    return True
+
+def view_log(args):
+    """View job logs"""
+    output_dir = os.path.expanduser(f"~/gpu-scheduler/output/{args.job_id}")
+    
+    if not os.path.isdir(output_dir):
+        print(f"Log directory for job {args.job_id} not found")
+        return False
+        
+    stdout_file = os.path.join(output_dir, "stdout.txt")
+    stderr_file = os.path.join(output_dir, "stderr.txt")
+    
+    print("=== STDOUT ===")
+    if os.path.isfile(stdout_file):
+        with open(stdout_file, 'r') as f:
+            print(f.read())
     else:
-        print(f"Error getting GPU status: {response.text}", file=sys.stderr)
-        return None
+        print("No stdout log found")
+    
+    print("")
+    print("=== STDERR ===")
+    if os.path.isfile(stderr_file):
+        with open(stderr_file, 'r') as f:
+            print(f.read())
+    else:
+        print("No stderr log found")
+    
+    return True
 
 def main():
     # Default server URL
@@ -153,8 +202,8 @@ def main():
     # Subparsers
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
     
-    # Submit job command
-    submit_parser = subparsers.add_parser('submit', help='Submit a new job')
+    # Submit command
+    submit_parser = subparsers.add_parser('submit', help='Submit a job')
     submit_parser.add_argument('--name', help='Job name')
     submit_parser.add_argument('--gpus', type=int, default=1, help='Number of GPUs required')
     submit_parser.add_argument('--gpu-ids', type=int, nargs='+', help='Specific GPU IDs to use')
@@ -162,66 +211,43 @@ def main():
     submit_parser.add_argument('--priority', type=int, default=0, help='Job priority (higher = more priority)')
     submit_parser.add_argument('--working-dir', help='Working directory')
     submit_parser.add_argument('--env', action='append', help='Environment variables in KEY=VALUE format')
-    submit_parser.add_argument('command', nargs='+', help='Command to run')
+    submit_parser.add_argument('command', help='Command to run (use quotes for commands with spaces)')
+    submit_parser.set_defaults(func=submit_job)
     
-    # List jobs command
-    subparsers.add_parser('list', help='List all jobs')
+    # List command
+    list_parser = subparsers.add_parser('list', help='List all jobs')
+    list_parser.set_defaults(func=list_jobs)
     
-    # Job status command
+    # Status command
     status_parser = subparsers.add_parser('status', help='Get job status')
     status_parser.add_argument('job_id', help='Job ID')
+    status_parser.set_defaults(func=get_job_status)
     
-    # Cancel job command
+    # Cancel command
     cancel_parser = subparsers.add_parser('cancel', help='Cancel a job')
     cancel_parser.add_argument('job_id', help='Job ID')
+    cancel_parser.set_defaults(func=cancel_job)
     
     # GPU status command
-    subparsers.add_parser('gpus', help='Get GPU status')
+    gpus_parser = subparsers.add_parser('gpus', help='Get GPU status')
+    gpus_parser.set_defaults(func=get_gpu_status)
+    
+    # Log command
+    log_parser = subparsers.add_parser('log', help='View job logs')
+    log_parser.add_argument('job_id', help='Job ID')
+    log_parser.set_defaults(func=view_log)
     
     # Parse arguments
     args = parser.parse_args()
     
-    # Process commands
-    if args.command == 'submit':
-        # Parse environment variables
-        env = {}
-        if args.env:
-            for env_var in args.env:
-                key, value = env_var.split('=', 1)
-                env[key] = value
-        
-        # Build command string from args
-        command_str = ' '.join(args.command)
-        
-        result = submit_job(
-            args.server,
-            command_str,
-            num_gpus=args.gpus,
-            gpu_ids=args.gpu_ids,
-            memory_limit=args.memory,
-            env=env or None,
-            working_dir=args.working_dir,
-            name=args.name,
-            priority=args.priority
-        )
-        
-        if result:
-            print(f"Job submitted with ID: {result['job_id']}")
-            
-    elif args.command == 'list':
-        list_jobs(args.server)
-        
-    elif args.command == 'status':
-        get_job_status(args.server, args.job_id)
-        
-    elif args.command == 'cancel':
-        cancel_job(args.server, args.job_id)
-        
-    elif args.command == 'gpus':
-        get_gpu_status(args.server)
-        
-    else:
+    # Check if command is specified
+    if not hasattr(args, 'func'):
         parser.print_help()
+        return 1
+    
+    # Execute command function
+    success = args.func(args)
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
