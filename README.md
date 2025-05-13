@@ -25,7 +25,7 @@ systemctl --user start gpuscheduler.service
 
 ## Server
 
-The server monitors GPU resources and handles job scheduling. By default, it runs on port 8000.
+The server monitors GPU resources and handles job scheduling. By default, it runs on port 9090.
 
 ```bash
 # Start the server manually
@@ -74,7 +74,7 @@ curl -X POST -H "Content-Type: application/json" -d '{
   "memory_limit": 5,
   "priority": 10,
   "name": "api-job"
-}' http://localhost:8000/jobs
+}' http://localhost:9090/jobs
 ```
 
 ## Managing Jobs
@@ -129,13 +129,13 @@ gpujob submit --memory 4 --name "memory-limited" python long_job.py
 
 ### Direct API Usage
 
-The scheduler exposes a REST API that you can use for integration with other tools:
+The scheduler exposes a REST API on port 9090 that you can use for integration with other tools:
 
-- `GET /jobs` - List all jobs
-- `POST /jobs` - Submit a new job
-- `GET /jobs/{job_id}` - Get status of a specific job
-- `POST /jobs/{job_id}/cancel` - Cancel a job
-- `GET /gpus` - Get status of all GPUs
+- `GET http://localhost:9090/jobs` - List all jobs
+- `POST http://localhost:9090/jobs` - Submit a new job
+- `GET http://localhost:9090/jobs/{job_id}` - Get status of a specific job
+- `POST http://localhost:9090/jobs/{job_id}/cancel` - Cancel a job
+- `GET http://localhost:9090/gpus` - Get status of all GPUs
 
 ### Job Configuration Options
 
@@ -153,4 +153,4 @@ The scheduler exposes a REST API that you can use for integration with other too
 - Server logs: `~/.config/gpuscheduler/scheduler.log`
 - Job output: `~/gpu-scheduler/output/[job_id]/stdout.txt` and `stderr.txt`
 - Check server status: `gpuschedulerd status`
-- Check if server is responding: `curl http://localhost:8000/gpus`
+- Check if server is responding: `curl http://localhost:9090/gpus`

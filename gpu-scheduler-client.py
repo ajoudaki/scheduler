@@ -144,7 +144,7 @@ def get_gpu_status(server_url):
 
 def main():
     # Default server URL
-    default_server = "http://localhost:8000"
+    default_server = "http://localhost:9090"
     
     # Main parser
     parser = argparse.ArgumentParser(description='GPU Scheduler Client')

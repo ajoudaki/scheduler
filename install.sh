@@ -75,7 +75,7 @@ status() {
         echo "Log file: $LOGFILE"
         
         # Try to connect to the server to verify it's responsive
-        if curl -s "http://localhost:8000/gpus" > /dev/null; then
+        if curl -s "http://localhost:9090/gpus" > /dev/null; then
             echo "Server is responsive"
         else
             echo "Warning: Server is running but not responding to API requests"
@@ -123,7 +123,7 @@ CONFIG_DIR="$HOME/.config/gpuscheduler"
 
 # Check if server is running
 check_server() {
-    if ! curl -s "http://localhost:8000/gpus" > /dev/null; then
+    if ! curl -s "http://localhost:9090/gpus" > /dev/null; then
         echo "Error: GPU scheduler is not running or not accessible"
         echo "Start it with: gpuschedulerd start"
         return 1
@@ -225,7 +225,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=$PYTHON_EXEC $CONFIG_DIR/gpu-scheduler.py
+ExecStart=$PYTHON_EXEC $CONFIG_DIR/gpu-scheduler.py --port 9090
 Restart=on-failure
 RestartSec=5s
 
