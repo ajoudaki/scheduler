@@ -13,6 +13,19 @@ The GPU scheduler client has been completely rewritten to improve reliability an
 5. **Log Viewing Support**: View job logs directly from the client.
 6. **Consistent Formatting**: Cleaner, more readable output.
 
+## Diagnostics Tool
+
+A GPU diagnostics tool has been added to help troubleshoot GPU access issues:
+
+- **Purpose**: Diagnose why jobs might fail with "CUDA-capable device(s) is/are busy or unavailable" errors
+- **Usage**: Submit as a job with `gpujob submit --name "diagnostics" diagnostics.py`
+- **Functionality**:
+  - Displays CUDA_VISIBLE_DEVICES environment variable
+  - Shows nvidia-smi output
+  - Reports PyTorch's view of available GPUs
+  - Tests GPU access by running a small matrix multiplication
+  - Lists running Python processes
+
 ### How to Use
 
 The updated `gpujob` command now has these capabilities:
@@ -48,6 +61,11 @@ gpujob cancel job1
 
 - The systemd service now runs with a faster poll interval (10 seconds instead of 30) for more responsive job scheduling.
 - Default port has been standardized to 9090.
+- Added `--max-used-memory` parameter to control when GPUs are considered available:
+  - Set to 0 to require completely empty GPUs (strictest setting)
+  - Set to a higher value to allow some memory usage (in MB)
+  - Default is None, which doesn't check used memory directly (only free memory)
+  - Example: `gpuschedulerd start --max-used-memory 0 --min-free-memory 8000`
 
 ## Installation
 

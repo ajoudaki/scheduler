@@ -70,13 +70,14 @@ class GPUInfo:
 class GPUScheduler:
     """Manages GPU resources and job scheduling."""
     
-    def __init__(self, poll_interval=10, min_free_memory=1000, max_gpu_util=10):
+    def __init__(self, poll_interval=10, min_free_memory=1000, max_gpu_util=10, max_used_memory=None):
         self.jobs: Dict[str, Job] = {}
         self.job_queue = queue.PriorityQueue()
         self.next_job_id = 1
         self.poll_interval = poll_interval  # seconds
         self.min_free_memory = min_free_memory  # MB
         self.max_gpu_util = max_gpu_util  # percent
+        self.max_used_memory = max_used_memory  # MB (None means no limit)
         self.lock = threading.RLock()
         self.gpus: Dict[int, GPUInfo] = {}
         self.running = True
@@ -144,7 +145,12 @@ class GPUScheduler:
                             
                     # Also consider it unavailable if it's highly utilized or low on memory
                     free_memory = gpu_info.total_memory - gpu_info.used_memory
-                    if free_memory < self.min_free_memory or gpu_info.utilization > self.max_gpu_util:
+                    used_memory = gpu_info.used_memory
+                    
+                    # Check memory and utilization constraints
+                    if (free_memory < self.min_free_memory or 
+                        gpu_info.utilization > self.max_gpu_util or 
+                        (self.max_used_memory is not None and used_memory > self.max_used_memory)):
                         if gpu_info.assigned_job_id is None:  # Only mark as unavailable if not explicitly assigned
                             gpu_info.is_available = False
                             
@@ -494,7 +500,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
             logger.error(f"Error handling POST request: {e}", exc_info=True)
             self._send_json_response({'error': str(e)}, 500)
 
-def run_server(port=8000, poll_interval=30, min_free_memory=1000, max_gpu_util=10):
+def run_server(port=8000, poll_interval=30, min_free_memory=1000, max_gpu_util=10, max_used_memory=None):
     """Run the HTTP server."""    
     
     # Check if required tools are available
@@ -506,7 +512,8 @@ def run_server(port=8000, poll_interval=30, min_free_memory=1000, max_gpu_util=1
     scheduler = GPUScheduler(
         poll_interval=poll_interval,
         min_free_memory=min_free_memory,
-        max_gpu_util=max_gpu_util
+        max_gpu_util=max_gpu_util,
+        max_used_memory=max_used_memory
     )
     
     # Set up HTTP server
@@ -531,13 +538,15 @@ def main():
     parser.add_argument('--poll-interval', type=int, default=30, help='Interval in seconds to poll GPU status')
     parser.add_argument('--min-free-memory', type=int, default=1000, help='Minimum free memory in MB to consider a GPU available')
     parser.add_argument('--max-gpu-util', type=int, default=10, help='Maximum GPU utilization percentage to consider a GPU available')
+    parser.add_argument('--max-used-memory', type=int, default=None, help='Maximum allowed used memory in MB to consider a GPU available (None means no limit, 0 means GPUs must be completely empty)')
     
     args = parser.parse_args()
     run_server(
         port=args.port,
         poll_interval=args.poll_interval,
         min_free_memory=args.min_free_memory,
-        max_gpu_util=args.max_gpu_util
+        max_gpu_util=args.max_gpu_util,
+        max_used_memory=args.max_used_memory
     )
 
 if __name__ == "__main__":

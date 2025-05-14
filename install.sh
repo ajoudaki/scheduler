@@ -47,6 +47,7 @@ start() {
     
     echo "Starting GPU scheduler..."
     mkdir -p "$CONFIG_DIR"
+    echo "Command: python3 $CONFIG_DIR/gpu-scheduler.py $@"
     nohup python3 "$CONFIG_DIR/gpu-scheduler.py" "$@" > "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     echo "GPU scheduler started with PID $!"
@@ -228,7 +229,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=$PYTHON_EXEC $CONFIG_DIR/gpu-scheduler.py --port 9090 --poll-interval 10
+ExecStart=$PYTHON_EXEC $CONFIG_DIR/gpu-scheduler.py --port 9090 --poll-interval 10 --max-used-memory 0
 Restart=on-failure
 RestartSec=5s
 
@@ -272,13 +273,21 @@ fi
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "Usage:"
-echo "  Start the scheduler daemon:   gpuschedulerd start"
+echo "  Start the scheduler daemon:   gpuschedulerd start [options]"
 echo "  Submit a job:                 gpujob submit \"command to run\""
 echo "  List all jobs:                gpujob list"
 echo "  View job status:              gpujob status <job_id>"
 echo "  View job logs:                gpujob log <job_id>"
 echo "  Cancel a job:                 gpujob cancel <job_id>"
 echo "  Show GPU status:              gpujob gpus"
+echo ""
+echo "Scheduler options:"
+echo "  --port <port>                  Port to run the server on (default: 8000)"
+echo "  --poll-interval <seconds>      Interval to poll GPU status (default: 30)"
+echo "  --min-free-memory <MB>         Minimum free memory to consider a GPU available (default: 1000)"
+echo "  --max-gpu-util <percent>       Maximum GPU utilization to consider a GPU available (default: 10)"
+echo "  --max-used-memory <MB>         Maximum allowed used memory to consider a GPU available (default: None)"
+echo "                                  Use 0 for strictest setting, requiring completely empty GPUs"
 echo ""
 echo "To start the scheduler daemon automatically at login:"
 echo "  systemctl --user enable gpuscheduler.service"
