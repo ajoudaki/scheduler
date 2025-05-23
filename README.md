@@ -1,6 +1,6 @@
 # GPU Scheduler
 
-A lightweight GPU job scheduler for managing GPU resources and job execution across multiple NVIDIA GPUs.
+A lightweight GPU job scheduler for managing GPU resources and job execution across multiple NVIDIA GPUs without having root access. 
 
 ## Overview
 
